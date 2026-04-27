@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ChronoTrack — Event Time Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Playfair+Display:wght@400;700;900&display=swap" rel="stylesheet" />
+<style>
+/* ─── RESET & ROOT ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #080c14;
+  --bg2:      #0d1320;
+  --bg3:      #111827;
+  --surface:  #141d2e;
+  --border:   #1e2d45;
+  --border2:  #243450;
+  --text:     #c8d8f0;
+  --text2:    #6a85a8;
+  --text3:    #3a5070;
+  --accent:   #3d9be9;
+  --accent2:  #1a6fc4;
+  --glow:     rgba(61,155,233,0.18);
+  --glow2:    rgba(61,155,233,0.06);
+  --past:     #6b7280;
+  --past-bg:  rgba(107,114,128,0.08);
+  --upcoming: #3d9be9;
+  --up-bg:    rgba(61,155,233,0.08);
+  --success:  #22c55e;
+  --error:    #ef4444;
+  --warn:     #f59e0b;
+  --radius:   12px;
+  --radius-sm:8px;
+  --mono:     'Space Mono', monospace;
+  --serif:    'Playfair Display', serif;
+  --trans:    0.2s ease;
+}
+[data-theme="light"] {
+  --bg:       #f0f4fa;
+  --bg2:      #e4ecf7;
+  --bg3:      #d8e4f2;
+  --surface:  #ffffff;
+  --border:   #c8d8ed;
+  --border2:  #b0c8e0;
+  --text:     #1a2a3a;
+  --text2:    #4a6480;
+  --text3:    #8aa0b8;
+  --glow:     rgba(61,155,233,0.12);
+  --glow2:    rgba(61,155,233,0.04);
+  --past-bg:  rgba(107,114,128,0.06);
+  --up-bg:    rgba(61,155,233,0.06);
+}
+
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  transition: background var(--trans), color var(--trans);
+  overflow-x: hidden;
+}
+
+/* ─── STAR BACKGROUND ──────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 50% 60%, rgba(255,255,255,0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 10% 80%, rgba(255,255,255,0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 70%, rgba(255,255,255,0.2) 0%, transparent 100%),
+    radial-gradient(2px 2px at 35% 15%, rgba(255,255,255,0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 65% 85%, rgba(255,255,255,0.15) 0%, transparent 100%);
+  pointer-events: none; z-index: 0;
+}
+[data-theme="light"] body::before { opacity: 0; }
+
+/* ─── LAYOUT ───────────────────────────────────────────────────── */
+#app { position: relative; z-index: 1; }
+
+/* ─── LOCK SCREEN ──────────────────────────────────────────────── */
+#lock-screen {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  z-index: 100;
+  animation: fadeIn 0.4s ease;
+}
+#lock-screen.hidden { display: none; }
+
+.lock-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 48px 40px;
+  width: 100%; max-width: 400px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(61,155,233,0.12);
+}
+.lock-icon {
+  width: 64px; height: 64px;
+  background: var(--glow);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px;
+  font-size: 28px;
+}
+.lock-title { font-family: var(--serif); font-size: 1.8rem; margin-bottom: 6px; }
+.lock-sub { color: var(--text2); font-size: 0.78rem; margin-bottom: 28px; }
+
+/* ─── HEADER ───────────────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(10px);
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--serif); font-size: 1.3rem; font-weight: 900;
+}
+.logo-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(0.85)} }
+
+.header-actions { display: flex; align-items: center; gap: 10px; }
+
+/* ─── MAIN ─────────────────────────────────────────────────────── */
+main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+
+/* ─── SEARCH + CONTROLS BAR ────────────────────────────────────── */
+.controls-bar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 24px; flex-wrap: wrap;
+}
+.search-wrap {
+  position: relative; flex: 1; min-width: 220px;
+}
+.search-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--text3); font-size: 14px; pointer-events: none;
+}
+#search-input {
+  width: 100%; padding: 10px 14px 10px 38px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--mono); font-size: 0.82rem;
+  transition: border-color var(--trans), box-shadow var(--trans);
+}
+#search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow2); }
+
+/* ─── STATS ROW ────────────────────────────────────────────────── */
+.stats-row {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 10px 10px;
+  transition: border-color var(--trans), box-shadow var(--trans);
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
+}
+.stat-card:hover { border-color: var(--border2); box-shadow: 0 4px 18px rgba(0,0,0,0.2); }
+.stat-label { font-size: 0.58rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-value { font-family: var(--serif); font-size: 1.7rem; font-weight: 900; line-height: 1; }
+.stat-sub   { font-size: 0.56rem; color: var(--text3); margin-top: 2px; }
+.stat-value.accent  { color: var(--accent); }
+.stat-value.past    { color: var(--past); }
+.stat-value.total   { color: var(--text); }
+.stat-value.months  { color: #a78bfa; }
+
+/* ─── EVENT GRID ───────────────────────────────────────────────── */
+.events-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px,1fr));
+  gap: 16px;
+}
+
+/* ─── EVENT CARD ───────────────────────────────────────────────── */
+.event-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: relative; overflow: hidden;
+  transition: transform var(--trans), box-shadow var(--trans), border-color var(--trans);
+  animation: cardIn 0.35s ease both;
+}
+@keyframes cardIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+.event-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.3); border-color: var(--border2); }
+.event-card.upcoming { border-top: 2px solid var(--accent); }
+.event-card.upcoming::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.6;
+}
+.event-card.past { border-top: 2px solid var(--past); opacity: 0.85; }
+
+.card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.card-title { font-family: var(--serif); font-size: 1.05rem; font-weight: 700; line-height: 1.3; flex: 1; }
+.card-badge {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+}
+.card-badge.upcoming { background: var(--up-bg); color: var(--upcoming); border: 1px solid rgba(61,155,233,0.25); }
+.card-badge.past     { background: var(--past-bg); color: var(--past); border: 1px solid rgba(107,114,128,0.2); }
+
+.card-desc { font-size: 0.78rem; color: var(--text2); margin-bottom: 14px; line-height: 1.55; min-height: 20px; }
+.card-datetime { font-size: 0.72rem; color: var(--text3); margin-bottom: 14px; }
+
+/* ─── TIMER DISPLAY ────────────────────────────────────────────── */
+.timer-display {
+  display: flex; gap: 4px; margin-bottom: 16px;
+}
+.timer-unit {
+  flex: 1; text-align: center;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 2px 6px;
+}
+.timer-num {
+  font-family: var(--serif); font-size: 1.05rem; font-weight: 900;
+  line-height: 1; display: block;
+}
+.upcoming .timer-num { color: var(--accent); }
+.past .timer-num     { color: var(--past); }
+.timer-label { font-size: 0.52rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; }
+.timer-unit.months-unit { border-color: rgba(167,139,250,0.3); }
+.upcoming .timer-unit.months-unit .timer-num { color: #a78bfa; }
+.past      .timer-unit.months-unit .timer-num { color: var(--past); }
+
+/* ─── EVENT TITLE LIST ─────────────────────────────────────────── */
+.accordion-wrap { margin-bottom: 28px; }
+.accordion-header {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 13px 18px;
+  border-bottom-color: transparent;
+}
+.accordion-title { font-family: var(--serif); font-size: 1rem; font-weight: 700; }
+.accordion-meta  { font-size: 0.7rem; color: var(--text3); }
+.accordion-list {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-top: none; border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+}
+
+/* Each row in the list */
+.accordion-item { border-bottom: 1px solid var(--border); }
+.accordion-item:last-child { border-bottom: none; }
+
+.accordion-item-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 18px; font-size: 0.8rem;
+  cursor: pointer; user-select: none;
+  transition: background var(--trans);
+}
+.accordion-item-row:hover { background: var(--surface); }
+.accordion-item.open > .accordion-item-row {
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  padding-left: 15px;
+}
+.accordion-item.open > .accordion-item-row .accordion-item-title { color: var(--accent); }
+
+.accordion-item-title { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.accordion-item-date  { font-size: 0.68rem; color: var(--text3); white-space: nowrap; }
+.accordion-item-badge { font-size: 0.58rem; padding: 2px 7px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+.accordion-item-badge.upcoming { background: var(--up-bg); color: var(--upcoming); border: 1px solid rgba(61,155,233,0.2); }
+.accordion-item-badge.past     { background: var(--past-bg); color: var(--past); border: 1px solid rgba(107,114,128,0.15); }
+.accordion-item-chevron { font-size: 0.72rem; color: var(--text3); transition: transform 0.25s ease; flex-shrink: 0; }
+.accordion-item.open > .accordion-item-row .accordion-item-chevron { transform: rotate(180deg); color: var(--accent); }
+
+/* Inline expanded event card panel */
+.accordion-item-panel {
+  overflow: hidden; max-height: 0;
+  transition: max-height 0.35s ease;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.accordion-item.open > .accordion-item-panel { max-height: 600px; }
+.accordion-item-panel .event-card {
+  border-radius: 0; border: none;
+  border-left: 3px solid var(--accent);
+  margin: 0; animation: none;
+}
+.accordion-item-panel .event-card:hover { transform: none; box-shadow: none; }
+
+/* ─── CHAR COUNTER ─────────────────────────────────────────────── */
+.field-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.field-header label { margin-bottom: 0; }
+.char-counter { font-size: 0.68rem; color: var(--text3); transition: color var(--trans); }
+.char-counter.warn  { color: var(--warn); }
+.char-counter.limit { color: var(--error); }
+
+.card-actions { display: flex; gap: 8px; }
+
+/* ─── EMPTY STATE ──────────────────────────────────────────────── */
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center; padding: 80px 20px;
+  color: var(--text3);
+}
+.empty-state-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.4; }
+.empty-state h3 { font-family: var(--serif); font-size: 1.4rem; color: var(--text2); margin-bottom: 8px; }
+.empty-state p { font-size: 0.78rem; }
+
+/* ─── MODALS ───────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(4,8,16,0.8); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 50; padding: 20px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  padding: 32px;
+  width: 100%; max-width: 480px;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.5);
+  transform: translateY(20px) scale(0.97);
+  transition: transform 0.25s ease;
+  max-height: 90vh; overflow-y: auto;
+}
+.modal-overlay.open .modal { transform: translateY(0) scale(1); }
+
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.modal-title { font-family: var(--serif); font-size: 1.4rem; font-weight: 700; }
+
+/* ─── FORMS ────────────────────────────────────────────────────── */
+.form-group { margin-bottom: 18px; }
+label { display: block; font-size: 0.72rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 7px; }
+input[type=text], input[type=password], input[type=datetime-local], textarea, select {
+  width: 100%; padding: 11px 14px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--mono); font-size: 0.85rem;
+  transition: border-color var(--trans), box-shadow var(--trans);
+  -webkit-appearance: none; appearance: none;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow2); }
+textarea { resize: vertical; min-height: 72px; }
+select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236a85a8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+
+input[type=color] { width: 40px; height: 40px; padding: 2px; border-radius: 6px; cursor: pointer; }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.error-msg { color: var(--error); font-size: 0.72rem; margin-top: 5px; display: none; }
+.error-msg.show { display: block; }
+
+/* ─── BUTTONS ──────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px;
+  border: none; border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: 0.8rem; font-weight: 700;
+  cursor: pointer; transition: all var(--trans); white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); box-shadow: 0 0 20px var(--glow); }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--border2); color: var(--text); background: var(--bg2); }
+.btn-danger { background: transparent; color: var(--error); border: 1px solid rgba(239,68,68,0.3); }
+.btn-danger:hover { background: rgba(239,68,68,0.1); border-color: var(--error); }
+.btn-sm { padding: 6px 12px; font-size: 0.72rem; }
+.btn-icon { padding: 8px; border-radius: 8px; width: 34px; height: 34px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-full { width: 100%; }
+
+/* ─── SORT/FILTER TABS ─────────────────────────────────────────── */
+.filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tab-btn {
+  padding: 7px 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; font-family: var(--mono); font-size: 0.72rem;
+  color: var(--text2); cursor: pointer;
+  transition: all var(--trans); white-space: nowrap;
+}
+.tab-btn.active, .tab-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ─── TOAST ────────────────────────────────────────────────────── */
+#toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 10px; }
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  animation: toastIn 0.3s ease both;
+  max-width: 320px;
+}
+@keyframes toastIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+.toast.success .toast-icon { color: var(--success); }
+.toast.error   .toast-icon { color: var(--error); }
+.toast.info    .toast-icon { color: var(--accent); }
+
+/* ─── LOADING OVERLAY ──────────────────────────────────────────── */
+.loading-bar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--accent);
+  transform-origin: left; transform: scaleX(0);
+  transition: transform 0.3s ease; z-index: 200;
+  box-shadow: 0 0 10px var(--accent);
+}
+.loading-bar.active { transform: scaleX(0.7); }
+.loading-bar.done   { transform: scaleX(1); transition: transform 0.15s ease; }
+
+/* ─── SETTINGS ─────────────────────────────────────────────────── */
+.settings-section { margin-bottom: 28px; }
+.settings-section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.settings-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.settings-label { font-size: 0.82rem; color: var(--text); }
+.settings-sub { font-size: 0.7rem; color: var(--text2); }
+
+/* ─── TOGGLE ───────────────────────────────────────────────────── */
+.toggle { position: relative; display: inline-block; width: 44px; height: 24px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: var(--border2); border-radius: 12px; cursor: pointer;
+  transition: background var(--trans);
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  width: 18px; height: 18px; left: 3px; top: 3px;
+  background: #fff; border-radius: 50%;
+  transition: transform var(--trans);
+}
+.toggle input:checked + .toggle-slider { background: var(--accent); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+/* ─── HELP MODAL ───────────────────────────────────────────────── */
+.help-section { margin-bottom: 20px; }
+.help-section h4 { font-family: var(--serif); font-size: 1rem; margin-bottom: 8px; color: var(--accent); }
+.help-section p, .help-section li { font-size: 0.78rem; color: var(--text2); line-height: 1.65; }
+.help-section ul { padding-left: 18px; }
+.help-section li { margin-bottom: 4px; }
+
+/* ─── SECTION HEADER ───────────────────────────────────────────── */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+.section-title { font-family: var(--serif); font-size: 1.3rem; font-weight: 700; }
+.events-count { font-size: 0.72rem; color: var(--text3); }
+
+/* ─── SPINNER ──────────────────────────────────────────────────── */
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+/* ─── RESPONSIVE ───────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  header { padding: 14px 16px; }
+  main { padding: 20px 14px 60px; }
+  .modal { padding: 24px 20px; }
+  .form-row { grid-template-columns: 1fr; }
+  .events-grid { grid-template-columns: 1fr; }
+  .lock-card { padding: 36px 24px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Loading Bar -->
+<div class="loading-bar" id="loading-bar"></div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- ─── LOCK SCREEN ──────────────────────────────────────────────── -->
+<div id="lock-screen">
+  <div class="lock-card">
+    <div class="lock-icon">🔐</div>
+    <h1 class="lock-title" id="lock-title">ChronoTrack</h1>
+    <p class="lock-sub" id="lock-sub">Loading…</p>
+    <div id="lock-form-area"></div>
+  </div>
+</div>
+
+<!-- ─── MAIN APP ─────────────────────────────────────────────────── -->
+<div id="app" style="display:none">
+
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      ChronoTrack
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-ghost btn-sm btn-icon" id="help-btn" title="Help">❓</button>
+      <button class="btn btn-ghost btn-sm btn-icon" id="settings-btn" title="Settings">⚙️</button>
+      <button class="btn btn-primary btn-sm" id="add-btn">＋ Add Event</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Stats -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><div class="stat-label">Total Events</div><div class="stat-value total" id="stat-total">0</div><div class="stat-sub">tracked</div></div>
+      <div class="stat-card"><div class="stat-label">Upcoming</div><div class="stat-value accent" id="stat-upcoming">0</div><div class="stat-sub">future</div></div>
+      <div class="stat-card"><div class="stat-label">Past</div><div class="stat-value past" id="stat-past">0</div><div class="stat-sub">elapsed</div></div>
+      <div class="stat-card"><div class="stat-label">Months Span</div><div class="stat-value months" id="stat-months">0</div><div class="stat-sub">month range</div></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-bar" style="flex-direction:column;align-items:stretch;">
+      <div class="search-wrap" style="width:100%">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Search events…" autocomplete="off" />
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="filter-tabs">
+          <button class="tab-btn active" data-filter="all">All</button>
+          <button class="tab-btn" data-filter="upcoming">Upcoming</button>
+          <button class="tab-btn" data-filter="past">Past</button>
+        </div>
+        <select id="sort-select" style="flex:1;min-width:120px;max-width:160px">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="soonest">Soonest</option>
+          <option value="latest">Latest</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Event Title List (always open) -->
+    <div class="accordion-wrap" id="accordion-wrap">
+      <div class="accordion-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="accordion-title">📋 Event Title List</div>
+          <div class="accordion-meta" id="accordion-meta">0 events</div>
+        </div>
+      </div>
+      <div class="accordion-list" id="accordion-list"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ─── MODALS ───────────────────────────────────────────────────── -->
+
+<!-- Add / Edit Event Modal -->
+<div class="modal-overlay" id="event-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="event-modal-title">Add Event</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('event-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label for="f-title">Event Title *</label>
+      <input type="text" id="f-title" placeholder="e.g. Project Launch, Birthday Party…" maxlength="120" />
+      <div class="error-msg" id="err-title">Title is required.</div>
+    </div>
+    <div class="form-group">
+      <div class="field-header">
+        <label for="f-desc">Description</label>
+        <span class="char-counter" id="desc-counter">0 / 1000</span>
+      </div>
+      <textarea id="f-desc" placeholder="Optional notes…" maxlength="1000" oninput="updateCharCounter(this, 'desc-counter', 1000)"></textarea>
+    </div>
+    <div class="form-group">
+      <label for="f-dt">Date & Time *</label>
+      <input type="datetime-local" id="f-dt" />
+      <div class="error-msg" id="err-dt">Date and time is required.</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button class="btn btn-ghost btn-full" onclick="closeModal('event-modal')">Cancel</button>
+      <button class="btn btn-primary btn-full" id="event-save-btn" onclick="saveEvent()">Save Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Settings</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('settings-modal')">✕</button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Appearance</div>
+      <div class="settings-row">
+        <div><div class="settings-label">Dark Mode</div><div class="settings-sub">Switch to light theme</div></div>
+        <label class="toggle"><input type="checkbox" id="dark-toggle" checked onchange="toggleTheme()" /><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">API Configuration</div>
+      <div class="form-group">
+        <label>Google Apps Script URL</label>
+        <input type="text" id="s-api-url" placeholder="https://script.google.com/macros/s/…/exec" />
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="password" id="s-api-key" placeholder="Your API key" />
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveApiConfig()">Save API Settings</button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Security</div>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="s-new-pw" placeholder="Enter new password" />
+      </div>
+      <div class="form-group">
+        <label>Confirm Password</label>
+        <input type="password" id="s-confirm-pw" placeholder="Confirm new password" />
+      </div>
+      <div class="error-msg" id="err-pw" style="margin-bottom:10px">Passwords do not match.</div>
+      <button class="btn btn-ghost btn-full" onclick="changePassword()">Change Password</button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Data</div>
+      <button class="btn btn-ghost btn-full" onclick="exportCSV()" style="margin-bottom:10px">📥 Export Events as CSV</button>
+      <button class="btn btn-danger btn-full" onclick="confirmClearAll()">🗑 Clear All Events</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help Modal -->
+<div class="modal-overlay" id="help-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Help & Guide</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('help-modal')">✕</button>
+    </div>
+    <div class="help-section">
+      <h4>➕ Adding Events</h4>
+      <p>Click <strong>+ Add Event</strong> in the header. Fill in the title (required), an optional description (up to 1000 characters — a live counter shows remaining space), and the date &amp; time. Hit <strong>Save Event</strong> — it saves to Google Sheets and appears instantly.</p>
+    </div>
+    <div class="help-section">
+      <h4>⏱ Countdown &amp; Elapsed Timers</h4>
+      <p>Each event card shows a live timer split into <strong>months · days · hours · mins · secs</strong>. Upcoming events count down; past events count up. Timers refresh every second automatically.</p>
+    </div>
+    <div class="help-section">
+      <h4>📋 Event Title List (Accordion)</h4>
+      <p>The collapsible <strong>Event Title List</strong> panel above the cards gives you a compact overview of all filtered events at a glance — with status badges and dates. Click any row to jump straight to editing that event. Click the panel header to expand or collapse it.</p>
+    </div>
+    <div class="help-section">
+      <h4>📊 Dashboard Stats</h4>
+      <p>Four stat cards show: <strong>Total Events</strong>, <strong>Upcoming</strong> (future), <strong>Past</strong> (elapsed), and <strong>Months Span</strong> — the number of months between your earliest and latest event, giving a sense of your timeline spread.</p>
+    </div>
+    <div class="help-section">
+      <h4>🔍 Search &amp; Filter</h4>
+      <p>Use the search bar to filter across title, description, and date. Use the <strong>All / Upcoming / Past</strong> tabs to narrow by status, and the sort dropdown to order by date or creation time — all update in real-time.</p>
+    </div>
+    <div class="help-section">
+      <h4>📥 Export Events</h4>
+      <p>Go to <strong>Settings → Data → Export Events as CSV</strong> to download all your events as a spreadsheet-compatible CSV file.</p>
+    </div>
+    <div class="help-section">
+      <h4>☁️ Data Storage</h4>
+      <p>Events sync to a Google Sheet via Google Apps Script. Set your Web App URL and API Key under <strong>Settings → API Configuration</strong>. Without an API, events fall back to browser local storage automatically.</p>
+    </div>
+    <div class="help-section">
+      <h4>🔐 Password &amp; Security</h4>
+      <p>A password protects the dashboard. On first launch you'll set one. To change it later, use <strong>Settings → Security</strong>. All passwords are SHA-256 hashed and stored only in your local browser — never sent to any server.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <div style="font-size:2.5rem;margin-bottom:16px">⚠️</div>
+    <h2 class="modal-title" id="confirm-title" style="margin-bottom:10px">Are you sure?</h2>
+    <p id="confirm-msg" style="font-size:0.82rem;color:var(--text2);margin-bottom:28px"></p>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-ghost btn-full" onclick="closeModal('confirm-modal')">Cancel</button>
+      <button class="btn btn-danger btn-full" id="confirm-ok-btn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  ChronoTrack — Event Time Tracker & Countdown Dashboard
+//  Single-file • Vanilla JS • Google Sheets backend
+// ══════════════════════════════════════════════════════════════════
+
+// ─── CONFIG ──────────────────────────────────────────────────────
+const SHEET_NAME = 'Events';
+let API_URL = '';
+let API_KEY = '';
+
+// ─── STATE ───────────────────────────────────────────────────────
+let events = [];
+let editingId = null;
+let filterMode = 'all';
+let sortMode   = 'newest';
+let searchQ    = '';
+let timerInterval = null;
+
+// ─── INIT ─────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadConfig();
+  initTheme();
+  initLockScreen();
+});
+
+// ─── CONFIG PERSISTENCE ──────────────────────────────────────────
+function loadConfig() {
+  API_URL = ls('api_url') || '';
+  API_KEY = ls('api_key') || '';
+}
+function saveApiConfig() {
+  const url = document.getElementById('s-api-url').value.trim();
+  const key = document.getElementById('s-api-key').value.trim();
+  if (!url || !key) { showToast('Please fill in both URL and API Key.', 'error'); return; }
+  lsSet('api_url', url);
+  lsSet('api_key', key);
+  API_URL = url; API_KEY = key;
+  showToast('API settings saved! Reloading events…', 'success');
+  closeModal('settings-modal');
+  loadEvents();
+}
+
+// ─── THEME ───────────────────────────────────────────────────────
+function initTheme() {
+  const saved = ls('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  const tog = document.getElementById('dark-toggle');
+  if (tog) tog.checked = (saved === 'dark');
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  lsSet('theme', next);
+}
+
+// ─── PASSWORD / LOCK SCREEN ──────────────────────────────────────
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function initLockScreen() {
+  const pwHash = ls('pw_hash');
+  const area = document.getElementById('lock-form-area');
+  if (!pwHash) {
+    document.getElementById('lock-title').textContent = 'Welcome!';
+    document.getElementById('lock-sub').textContent = 'Set a password to protect your dashboard.';
+    area.innerHTML = `
+      <div class="form-group"><label>Password</label><input type="password" id="lk-pw" placeholder="Choose a password" /></div>
+      <div class="form-group"><label>Confirm</label><input type="password" id="lk-pw2" placeholder="Confirm password" /></div>
+      <div class="error-msg" id="lk-err" style="margin-bottom:12px"></div>
+      <button class="btn btn-primary btn-full" onclick="setPassword()">Set Password & Enter</button>`;
+  } else {
+    document.getElementById('lock-title').textContent = 'ChronoTrack';
+    document.getElementById('lock-sub').textContent = 'Enter your password to continue.';
+    area.innerHTML = `
+      <div class="form-group"><label>Password</label><input type="password" id="lk-pw" placeholder="Password" onkeydown="if(event.key==='Enter')unlock()" /></div>
+      <div class="error-msg" id="lk-err" style="margin-bottom:12px"></div>
+      <button class="btn btn-primary btn-full" onclick="unlock()">Unlock →</button>`;
+    setTimeout(() => { const el = document.getElementById('lk-pw'); if (el) el.focus(); }, 100);
+  }
+}
+
+async function setPassword() {
+  const pw  = document.getElementById('lk-pw').value;
+  const pw2 = document.getElementById('lk-pw2').value;
+  const err = document.getElementById('lk-err');
+  if (!pw) { showLockErr('Please enter a password.'); return; }
+  if (pw.length < 4) { showLockErr('Password must be at least 4 characters.'); return; }
+  if (pw !== pw2) { showLockErr('Passwords do not match.'); return; }
+  const hash = await sha256(pw);
+  lsSet('pw_hash', hash);
+  enterApp();
+}
+async function unlock() {
+  const pw = document.getElementById('lk-pw').value;
+  if (!pw) { showLockErr('Enter your password.'); return; }
+  const hash = await sha256(pw);
+  if (hash === ls('pw_hash')) {
+    enterApp();
+  } else {
+    showLockErr('Incorrect password. Try again.');
+    document.getElementById('lk-pw').value = '';
+    document.getElementById('lk-pw').focus();
+  }
+}
+async function changePassword() {
+  const np  = document.getElementById('s-new-pw').value;
+  const cp  = document.getElementById('s-confirm-pw').value;
+  const err = document.getElementById('err-pw');
+  if (!np || !cp) { showEl(err); err.textContent='Fill in both fields.'; return; }
+  if (np.length < 4) { showEl(err); err.textContent='Min 4 characters.'; return; }
+  if (np !== cp) { showEl(err); err.textContent='Passwords do not match.'; return; }
+  hideEl(err);
+  const hash = await sha256(np);
+  lsSet('pw_hash', hash);
+  document.getElementById('s-new-pw').value = '';
+  document.getElementById('s-confirm-pw').value = '';
+  showToast('Password changed!', 'success');
+}
+function showLockErr(msg) {
+  const el = document.getElementById('lk-err');
+  el.textContent = msg; el.style.display = 'block';
+  el.classList.add('show');
+}
+function enterApp() {
+  document.getElementById('lock-screen').classList.add('hidden');
+  document.getElementById('app').style.display = 'block';
+  initApp();
+}
+
+// ─── APP INIT ─────────────────────────────────────────────────────
+function initApp() {
+  populateSettingsForm();
+  bindControls();
+  loadEvents();
+  startTimerLoop();
+}
+function populateSettingsForm() {
+  document.getElementById('s-api-url').value = API_URL;
+  document.getElementById('s-api-key').value = API_KEY;
+  const tog = document.getElementById('dark-toggle');
+  const theme = ls('theme') || 'dark';
+  if (tog) tog.checked = (theme === 'dark');
+}
+function bindControls() {
+  document.getElementById('search-input').addEventListener('input', e => {
+    searchQ = e.target.value.toLowerCase();
+    renderEvents();
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filterMode = btn.dataset.filter;
+      renderEvents();
+    });
+  });
+  document.getElementById('sort-select').addEventListener('change', e => {
+    sortMode = e.target.value;
+    renderEvents();
+  });
+  document.getElementById('add-btn').addEventListener('click', () => openAddModal());
+  document.getElementById('settings-btn').addEventListener('click', () => openModal('settings-modal'));
+  document.getElementById('help-btn').addEventListener('click', () => openModal('help-modal'));
+}
+
+// ─── TIMER LOOP ────────────────────────────────────────────────────
+function startTimerLoop() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => updateTimers(), 1000);
+}
+function updateTimers() {
+  const now = Date.now();
+  document.querySelectorAll('.event-card').forEach(card => {
+    const dt = parseInt(card.dataset.dt);
+    const diff = Math.abs(now - dt);
+    const units = calcUnits(diff);
+    card.querySelector('.t-months').textContent = units.months;
+    card.querySelector('.t-days').textContent  = units.days;
+    card.querySelector('.t-hours').textContent = units.hours;
+    card.querySelector('.t-mins').textContent  = units.mins;
+    card.querySelector('.t-secs').textContent  = units.secs;
+  });
+}
+function calcUnits(diffMs) {
+  const s = Math.floor(diffMs / 1000);
+  const totalDays = Math.floor(s / 86400);
+  const AVG_DAYS_PER_MONTH = 30; // integer for clean remainder
+  const months    = Math.floor(totalDays / AVG_DAYS_PER_MONTH);
+  const remainDays = totalDays % AVG_DAYS_PER_MONTH;
+  return {
+    months: String(months).padStart(2, '0'),
+    days:   String(remainDays).padStart(2, '0'),
+    hours:  String(Math.floor((s % 86400) / 3600)).padStart(2, '0'),
+    mins:   String(Math.floor((s % 3600) / 60)).padStart(2, '0'),
+    secs:   String(s % 60).padStart(2, '0')
+  };
+}
+
+// ─── API LAYER ─────────────────────────────────────────────────────
+async function apiRequest(params) {
+  if (!API_URL) throw new Error('API URL not configured. Go to Settings.');
+  const body = JSON.stringify({ apiKey: API_KEY, sheet: SHEET_NAME, ...params });
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body
+  });
+  const json = await res.json();
+  if (json.status !== 'success') throw new Error(json.message || 'API error');
+  return json.data;
+}
+
+async function loadEvents() {
+  showLoading(true);
+  try {
+    if (!API_URL) {
+      events = lsGetEvents();
+      showToast('No API configured — using local storage.', 'info');
+    } else {
+      const data = await apiRequest({ action: 'getAll' });
+      events = (Array.isArray(data) ? data : []).map(normalizeEvent);
+      lsSetEvents(events); // cache locally
+    }
+  } catch (e) {
+    events = lsGetEvents();
+    showToast('API unavailable — using cached data.', 'error');
+  }
+  showLoading(false);
+  renderEvents();
+}
+
+async function saveEvent() {
+  const title = document.getElementById('f-title').value.trim();
+  const desc  = document.getElementById('f-desc').value.trim();
+  const dt    = document.getElementById('f-dt').value;
+  let valid = true;
+  if (!title) { showEl(document.getElementById('err-title')); valid = false; } else hideEl(document.getElementById('err-title'));
+  if (!dt)    { showEl(document.getElementById('err-dt'));    valid = false; } else hideEl(document.getElementById('err-dt'));
+  if (!valid) return;
+
+  const btn = document.getElementById('event-save-btn');
+  btn.disabled = true; btn.innerHTML = '<div class="spinner"></div>';
+
+  // Preserve original created_at when editing; only set it fresh for new events
+  const existingEvent = editingId ? events.find(e => e.id === editingId) : null;
+  const event = {
+    id:          editingId || genId(),
+    title,
+    description: desc,
+    datetime:    dt,
+    created_at:  existingEvent ? existingEvent.created_at : new Date().toISOString()
+  };
+
+  try {
+    if (API_URL) {
+      await apiRequest({ action: 'save', data: event });
+    }
+    // Update local list
+    const idx = events.findIndex(e => e.id === event.id);
+    if (idx >= 0) events[idx] = event; else events.push(event);
+    lsSetEvents(events);
+    showToast(editingId ? 'Event updated!' : 'Event saved!', 'success');
+    closeModal('event-modal');
+    renderEvents();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = 'Save Event';
+}
+
+async function deleteEvent(id) {
+  const event = events.find(e => e.id === id);
+  if (!event) return;
+  openConfirm(`Delete "${event.title}"?`, 'This cannot be undone.', async () => {
+    try {
+      if (API_URL) await apiRequest({ action: 'delete', key: id });
+      events = events.filter(e => e.id !== id);
+      lsSetEvents(events);
+      showToast('Event deleted.', 'info');
+      renderEvents();
+    } catch (e) {
+      showToast('Delete failed: ' + e.message, 'error');
+    }
+  });
+}
+
+async function confirmClearAll() {
+  openConfirm('Clear ALL Events?', 'All events will be permanently deleted from Google Sheets and local storage.', async () => {
+    try {
+      // Delete each remotely
+      if (API_URL) {
+        for (const ev of events) {
+          await apiRequest({ action: 'delete', key: ev.id });
+        }
+      }
+      events = [];
+      lsSetEvents([]);
+      showToast('All events cleared.', 'info');
+      closeModal('settings-modal');
+      renderEvents();
+    } catch (e) {
+      showToast('Clear failed: ' + e.message, 'error');
+    }
+  });
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────
+function renderEvents() {
+  const now = Date.now();
+  let list = [...events];
+
+  // Filter
+  if (filterMode === 'upcoming') list = list.filter(e => new Date(e.datetime) > now);
+  if (filterMode === 'past')     list = list.filter(e => new Date(e.datetime) <= now);
+
+  // Search
+  if (searchQ) {
+    list = list.filter(e =>
+      e.title.toLowerCase().includes(searchQ) ||
+      (e.description || '').toLowerCase().includes(searchQ) ||
+      (e.datetime || '').toLowerCase().includes(searchQ)
+    );
+  }
+
+  // Sort
+  list.sort((a, b) => {
+    const da = new Date(a.datetime), db = new Date(b.datetime);
+    if (sortMode === 'newest')  return new Date(b.created_at) - new Date(a.created_at);
+    if (sortMode === 'oldest')  return new Date(a.created_at) - new Date(b.created_at);
+    if (sortMode === 'soonest') return da - db;
+    if (sortMode === 'latest')  return db - da;
+    return 0;
+  });
+
+  // Stats
+  const total    = events.length;
+  const upcoming = events.filter(e => new Date(e.datetime) > now).length;
+  const past     = total - upcoming;
+  document.getElementById('stat-total').textContent    = total;
+  document.getElementById('stat-upcoming').textContent = upcoming;
+  document.getElementById('stat-past').textContent     = past;
+
+  // Months span: range between earliest and latest event datetime
+  if (events.length >= 2) {
+    const dts = events.map(e => new Date(e.datetime)).filter(d => !isNaN(d));
+    if (dts.length >= 2) {
+      const minDt = Math.min(...dts);
+      const maxDt = Math.max(...dts);
+      const spanMs = maxDt - minDt;
+      const spanMonths = Math.round(spanMs / (1000 * 60 * 60 * 24 * 30.4375));
+      document.getElementById('stat-months').textContent = spanMonths;
+    } else { document.getElementById('stat-months').textContent = '—'; }
+  } else { document.getElementById('stat-months').textContent = '—'; }
+
+  // Render accordion title list (all event cards are inline within the list)
+  renderAccordion(list, now);
+}
+
+// ─── TOGGLE INDIVIDUAL ACCORDION ITEM ─────────────────────────────
+function toggleAccordionItem(id) {
+  const item = document.querySelector(`.accordion-item[data-id="${id}"]`);
+  if (!item) return;
+  const isOpen = item.classList.contains('open');
+  // Close all other open items first
+  document.querySelectorAll('.accordion-item.open').forEach(el => {
+    if (el !== item) {
+      el.classList.remove('open');
+      el.querySelector('.accordion-item-panel').style.maxHeight = '0';
+    }
+  });
+  if (isOpen) {
+    item.classList.remove('open');
+    item.querySelector('.accordion-item-panel').style.maxHeight = '0';
+  } else {
+    item.classList.add('open');
+    const panel = item.querySelector('.accordion-item-panel');
+    panel.style.maxHeight = panel.scrollHeight + 'px';
+    // Scroll into view
+    setTimeout(() => item.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+  }
+}
+
+function eventCardHTML(ev, now) {
+  const evMs    = new Date(ev.datetime).getTime();
+  const isPast  = evMs <= now;
+  const diff    = Math.abs(now - evMs);
+  const units   = calcUnits(diff);
+  const dtLabel = formatDT(ev.datetime);
+  const descHtml = ev.description
+    ? `<div class="card-desc">${escHtml(ev.description)}</div>`
+    : `<div class="card-desc" style="color:var(--text3)">No description</div>`;
+
+  return `
+  <div class="event-card ${isPast ? 'past' : 'upcoming'}" data-dt="${evMs}">
+    <div class="card-header">
+      <div class="card-title">${escHtml(ev.title)}</div>
+      <div class="card-badge ${isPast ? 'past' : 'upcoming'}">${isPast ? '⏮ Past' : '⏭ Upcoming'}</div>
+    </div>
+    ${descHtml}
+    <div class="card-datetime">🗓 ${dtLabel}</div>
+    <div class="timer-display">
+      <div class="timer-unit months-unit"><span class="timer-num t-months">${units.months}</span><span class="timer-label">Mo</span></div>
+      <div class="timer-unit"><span class="timer-num t-days">${units.days}</span><span class="timer-label">Days</span></div>
+      <div class="timer-unit"><span class="timer-num t-hours">${units.hours}</span><span class="timer-label">Hrs</span></div>
+      <div class="timer-unit"><span class="timer-num t-mins">${units.mins}</span><span class="timer-label">Min</span></div>
+      <div class="timer-unit"><span class="timer-num t-secs">${units.secs}</span><span class="timer-label">Sec</span></div>
+    </div>
+    <div class="card-actions">
+      <button class="btn btn-ghost btn-sm" style="flex:1" data-edit="${ev.id}">✏️ Edit</button>
+      <button class="btn btn-danger btn-sm btn-icon" data-del="${ev.id}" title="Delete">🗑</button>
+    </div>
+  </div>`;
+}
+
+// ─── MODAL HELPERS ────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function openAddModal() {
+  editingId = null;
+  document.getElementById('event-modal-title').textContent = 'Add Event';
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-desc').value  = '';
+  document.getElementById('f-dt').value    = localDatetimeValue();
+  updateCharCounter(document.getElementById('f-desc'), 'desc-counter', 1000);
+  hideEl(document.getElementById('err-title'));
+  hideEl(document.getElementById('err-dt'));
+  openModal('event-modal');
+  setTimeout(() => document.getElementById('f-title').focus(), 100);
+}
+function openEditModal(id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  editingId = id;
+  document.getElementById('event-modal-title').textContent = 'Edit Event';
+  document.getElementById('f-title').value = ev.title;
+  document.getElementById('f-desc').value  = ev.description || '';
+  document.getElementById('f-dt').value    = ev.datetime ? localDatetimeValue(new Date(ev.datetime)) : '';
+  updateCharCounter(document.getElementById('f-desc'), 'desc-counter', 1000);
+  hideEl(document.getElementById('err-title'));
+  hideEl(document.getElementById('err-dt'));
+  openModal('event-modal');
+  setTimeout(() => document.getElementById('f-title').focus(), 100);
+}
+function openConfirm(title, msg, onConfirm) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-msg').textContent   = msg;
+  const btn = document.getElementById('confirm-ok-btn');
+  btn.onclick = () => { closeModal('confirm-modal'); onConfirm(); };
+  openModal('confirm-modal');
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(ov.id); });
+});
+
+// ─── TOAST ────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="toast-icon">${icons[type]}</span><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ─── LOADING BAR ──────────────────────────────────────────────────
+function showLoading(on) {
+  const bar = document.getElementById('loading-bar');
+  if (on) { bar.classList.add('active'); bar.classList.remove('done'); }
+  else    { bar.classList.add('done'); bar.classList.remove('active'); setTimeout(() => bar.classList.remove('done'), 300); }
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────
+function genId()  { return 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function showEl(el) { el.classList.add('show'); el.style.display = 'block'; }
+function hideEl(el) { el.classList.remove('show'); el.style.display = 'none'; }
+
+function formatDT(dtStr) {
+  if (!dtStr) return '—';
+  const d = new Date(dtStr);
+  if (isNaN(d)) return dtStr;
+  return d.toLocaleString('en-PH', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function formatDate(dtStr) {
+  if (!dtStr) return '—';
+  const d = new Date(dtStr);
+  if (isNaN(d)) return dtStr;
+  return d.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' });
+}
+function localDatetimeValue(d = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function normalizeEvent(ev) {
+  // Handle Google Sheets returning Date objects as strings
+  return {
+    id:          String(ev.id || ''),
+    title:       String(ev.title || ''),
+    description: String(ev.description || ''),
+    datetime:    String(ev.datetime || ''),
+    created_at:  String(ev.created_at || new Date().toISOString())
+  };
+}
+
+
+function renderAccordion(list, now) {
+  const meta = document.getElementById('accordion-meta');
+  const ul   = document.getElementById('accordion-list');
+  meta.textContent = `${list.length} event${list.length !== 1 ? 's' : ''}`;
+  if (!list.length) {
+    ul.innerHTML = `<div style="padding:14px 18px;font-size:0.78rem;color:var(--text3)">No events to show.</div>`;
+    return;
+  }
+  ul.innerHTML = list.map(ev => {
+    const isPast = new Date(ev.datetime) <= now;
+    const dtStr  = formatDate(ev.datetime);
+    const cardHTML = eventCardHTML(ev, now);
+    return `<div class="accordion-item" data-id="${escHtml(ev.id)}">
+      <div class="accordion-item-row">
+        <span class="accordion-item-badge ${isPast ? 'past' : 'upcoming'}">${isPast ? 'Past' : 'Soon'}</span>
+        <span class="accordion-item-title" title="${escHtml(ev.title)}">${escHtml(ev.title)}</span>
+        <span class="accordion-item-date">${dtStr}</span>
+        <span class="accordion-item-chevron">▼</span>
+      </div>
+      <div class="accordion-item-panel">${cardHTML}</div>
+    </div>`;
+  }).join('');
+
+  // Bind row clicks to toggle the inline panel
+  ul.querySelectorAll('.accordion-item-row').forEach(row => {
+    row.addEventListener('click', () => toggleAccordionItem(row.closest('.accordion-item').dataset.id));
+  });
+
+  // Bind card buttons inside panels
+  ul.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openEditModal(btn.dataset.edit); }));
+  ul.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); deleteEvent(btn.dataset.del); }));
+}
+
+// ─── CHAR COUNTER ──────────────────────────────────────────────────
+function updateCharCounter(el, counterId, maxLen) {
+  const len = el.value.length;
+  const ctr = document.getElementById(counterId);
+  if (!ctr) return;
+  ctr.textContent = `${len} / ${maxLen}`;
+  ctr.classList.remove('warn', 'limit');
+  if (len >= maxLen) ctr.classList.add('limit');
+  else if (len >= maxLen * 0.8) ctr.classList.add('warn');
+}
+
+// ─── EXPORT CSV ────────────────────────────────────────────────────
+function exportCSV() {
+  if (!events.length) { showToast('No events to export.', 'error'); return; }
+  const rows = [['ID','Title','Description','DateTime','Created']];
+  events.forEach(e => rows.push([e.id, e.title, (e.description||'').replace(/,/g,'；'), e.datetime, e.created_at]));
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ChronoTrack_events_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  showToast('Events exported to CSV!', 'success');
+}
+
+// ─── LOCAL STORAGE ────────────────────────────────────────────────
+function ls(key)          { try { return localStorage.getItem('ct_' + key); } catch { return null; } }
+function lsSet(key, val)  { try { localStorage.setItem('ct_' + key, val); } catch {} }
+function lsGetEvents()    { try { return JSON.parse(localStorage.getItem('ct_events') || '[]'); } catch { return []; } }
+function lsSetEvents(arr) { try { localStorage.setItem('ct_events', JSON.stringify(arr)); } catch {} }
+</script>
+</body>
+</html>
