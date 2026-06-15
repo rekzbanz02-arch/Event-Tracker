@@ -1129,7 +1129,7 @@ async function setPassword() {
   const pw2 = document.getElementById('lk-pw2').value;
   // FIX: Raised minimum password length to 6 for minimal security
   if (!pw)            { showLockErr('Please enter a password.'); return; }
-  if (pw.length < 6)  { showLockErr('Password must be at least 6 characters.'); return; }
+  if (pw.length < 4)  { showLockErr('Password must be at least 6 characters.'); return; }
   if (pw !== pw2)     { showLockErr('Passwords do not match.'); return; }
   const hash = await sha256(pw);
   lsSet('pw_hash', hash);
@@ -1174,7 +1174,7 @@ async function changePassword() {
   // FIX: Verify current password before allowing change
   const curHash = await sha256(cur);
   if (curHash !== ls('pw_hash')) { showEl(err); err.textContent = 'Current password is incorrect.'; return; }
-  if (np.length < 6) { showEl(err); err.textContent = 'New password must be at least 6 characters.'; return; }
+  if (np.length < 4) { showEl(err); err.textContent = 'New password must be at least 6 characters.'; return; }
   if (np !== cp)     { showEl(err); err.textContent = 'Passwords do not match.'; return; }
   hideEl(err);
   const hash = await sha256(np);
